@@ -1,0 +1,5 @@
+{
+  "name": "IntentOps AI",
+  "description": "An intent-aware cloud cost and performance optimizer that analyzes code and infrastructure to provide actionable recommendations and auto-refactoring for AWS-based SaaS applications.",
+  "requestFramePermissions": []
+}
