@@ -1,7 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { OptimizationIntent, Recommendation, Project } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: (import.meta as any).env.GEMINI_API_KEY || '' });
+const apiKey = import.meta.env.GEMINI_API_KEY;
+if (!apiKey) {
+  console.error('GEMINI_API_KEY is not set in environment variables');
+}
+const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 export async function generateRecommendations(
   intent: OptimizationIntent, 
