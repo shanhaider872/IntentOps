@@ -48,16 +48,11 @@ export async function createProject(project: Omit<Project, 'id' | 'created_at' |
       full_name: project.full_name,
       description: project.description || '',
       url: project.url,
-      default_branch: project.default_branch,
+      default_branch: project.default_branch || 'main',
       language: project.language || '',
       cloud_provider: project.cloud_provider || 'unknown',
-      detected_frameworks: project.detected_frameworks,
-      has_dockerfile: project.has_dockerfile,
-      has_terraform: project.has_terraform,
-      has_cloudformation: project.has_cloudformation,
-      has_k8s: project.has_k8s,
-      repo_size_kb: project.repo_size_kb,
-      file_count: project.file_count,
+      detected_frameworks: project.detected_frameworks || [],
+      is_connected: true,
     })
     .select()
     .single();
@@ -76,6 +71,9 @@ export async function createProject(project: Omit<Project, 'id' | 'created_at' |
     }
     if (error.message.includes('row-level security')) {
       throw new Error('Permission denied. Please try signing out and signing in again.');
+    }
+    if (error.message.includes('schema cache')) {
+      throw new Error('Database schema error. Please contact support.');
     }
     
     throw new Error(`Failed to create project: ${error.message}`);
