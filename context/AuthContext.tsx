@@ -35,7 +35,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         // Store email from auth session
         setUserEmail(session.user.email || null);
-        await fetchProfile(session.user.id);
+        try {
+          await fetchProfile(session.user.id);
+        } catch (err) {
+          console.error('Failed to fetch profile:', err);
+        }
         setIsLoading(false);
         isInitialized = true;
       } else if (event === 'SIGNED_OUT') {
@@ -58,7 +62,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (session.provider_token) {
             localStorage.setItem('github_token', session.provider_token);
           }
-          await fetchProfile(session.user.id);
+          try {
+            await fetchProfile(session.user.id);
+          } catch (err) {
+            console.error('Failed to fetch profile:', err);
+          }
         } else {
           console.log('No initial session found');
         }
@@ -92,25 +100,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (error) {
-        console.error('Error fetching profile:', error);
-        // If profile doesn't exist yet, create a minimal profile from session data
-        if (error.code === 'PGRST116') {
-          console.log('Profile does not exist, waiting for database sync...');
-          // Give database a moment to sync
-          await new Promise(resolve => setTimeout(resolve, 500));
-          const { data: retryData, error: retryError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
-          
-          if (retryError) {
-            console.error('Profile still not found after retry:', retryError);
-            return;
+        // Profile not found - create a temporary one from auth data
+        if (error.code === 'PGRST116' || error.status === 406) {
+          console.log('Profile not found, creating minimal profile...');
+          // Get the auth user data
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          if (authUser) {
+            const minimalProfile: Profile = {
+              id: authUser.id,
+              email: authUser.email || null,
+              full_name: authUser.user_metadata?.full_name || null,
+              avatar_url: authUser.user_metadata?.avatar_url || null,
+              github_username: authUser.user_metadata?.user_name || null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            console.log('Setting minimal profile for:', minimalProfile.email);
+            setUser(minimalProfile);
           }
-          
-          setUser(retryData);
+          return;
         }
+        console.error('Error fetching profile:', error);
         return;
       }
 

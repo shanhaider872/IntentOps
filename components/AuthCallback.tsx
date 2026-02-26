@@ -10,8 +10,8 @@ export const AuthCallback: React.FC = () => {
         console.log('Auth callback: Processing OAuth redirect...');
         
         // Supabase automatically handles the OAuth code from the URL
-        // Wait a moment for the session to be established
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Wait for the session to be fully established
+        await new Promise(resolve => setTimeout(resolve, 2000));
         
         // Get the session - it should be available now
         const { data: { session }, error } = await supabase.auth.getSession();
@@ -43,18 +43,12 @@ export const AuthCallback: React.FC = () => {
           setTimeout(() => {
             console.log('Redirecting to home...');
             window.location.href = '/';
-          }, 500);
+          }, 1000);
         } else {
-          console.log('No session found yet, waiting for auth state...');
-          setStatus('processing');
-          
-          // Wait for auth state change
-          const timeout = setTimeout(() => {
-            console.log('Auth state timeout, redirecting to home');
+          console.log('No session found yet, redirecting to home');
+          setTimeout(() => {
             window.location.href = '/';
-          }, 5000);
-          
-          return () => clearTimeout(timeout);
+          }, 1000);
         }
       } catch (error) {
         console.error('Auth callback error:', error);
