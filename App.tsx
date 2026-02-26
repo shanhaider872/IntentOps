@@ -12,7 +12,7 @@ import { getUserProjects, getProjectRecommendations } from './services/projectSe
 import { INTENT_OPTIONS } from './constants';
 
 const App: React.FC = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [intent, setIntent] = useState<OptimizationIntent>('balanced');
   const [loading, setLoading] = useState(false);

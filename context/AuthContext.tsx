@@ -19,11 +19,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+    
     // Check for existing session
     const checkSession = async () => {
       try {
         console.log('Checking for existing session...');
         const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
         
         if (error) {
           console.error('Error getting session:', error);
@@ -33,6 +37,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (session?.user) {
           // Store email from auth session
           setUserEmail(session.user.email || null);
+          // Store tokens
+          if (session.provider_token) {
+            localStorage.setItem('github_token', session.provider_token);
+          }
           await fetchProfile(session.user.id);
           console.log('Session restored for:', session.user.email);
         } else {
@@ -41,17 +49,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (err) {
         console.error('Unexpected error during session check:', err);
       } finally {
-        // Always set loading to false, even if there's an error
-        setIsLoading(false);
-        console.log('Session check complete, loading set to false');
+        if (mounted) {
+          // Always set loading to false, even if there's an error
+          setIsLoading(false);
+          console.log('Session check complete, loading set to false');
+        }
       }
     };
 
-    // Set a timeout to prevent infinite loading
+    // Set a timeout to prevent infinite loading (5 seconds is plenty)
     const timeoutId = setTimeout(() => {
-      setIsLoading(false);
-      console.warn('Session check timeout - forcing loading to false');
-    }, 10000);
+      if (mounted) {
+        setIsLoading(false);
+        console.warn('Session check timeout - forcing loading to false');
+      }
+    }, 5000);
 
     checkSession().then(() => {
       clearTimeout(timeoutId);
@@ -61,6 +73,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', event);
+      
       if (event === 'SIGNED_IN' && session?.user) {
         // Store GitHub token if available
         if (session.provider_token) {
@@ -69,14 +83,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Store email from auth session
         setUserEmail(session.user.email || null);
         await fetchProfile(session.user.id);
+        setIsLoading(false);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserEmail(null);
         localStorage.removeItem('github_token');
+        setIsLoading(false);
+      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Handle token refresh
+        setUserEmail(session.user.email || null);
+        if (session.provider_token) {
+          localStorage.setItem('github_token', session.provider_token);
+        }
       }
     });
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
