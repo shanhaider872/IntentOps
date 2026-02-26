@@ -58,16 +58,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signInWithGitHub = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'github',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`
-      }
-    });
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      });
 
-    if (error) {
-      console.error('Error signing in with GitHub:', error);
-      throw error;
+      if (error) {
+        console.error('GitHub OAuth error:', error);
+        alert(`Sign in failed: ${error.message}`);
+        throw error;
+      }
+    } catch (err) {
+      console.error('Sign in error:', err);
+      throw err;
     }
   };
 
