@@ -18,75 +18,65 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Initialize auth on component mount
   useEffect(() => {
     let mounted = true;
-    let isInitialized = false;
 
-    // Listen for auth changes - this handles both initial session and future changes
+    const initializeAuth = async () => {
+      try {
+        console.log('Initializing auth...');
+        
+        // Check if there's a stored session in Supabase
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+
+        if (session?.user) {
+          console.log('Session found for:', session.user.email);
+          setUserEmail(session.user.email || null);
+          
+          if (session.provider_token) {
+            localStorage.setItem('github_token', session.provider_token);
+          }
+          
+          // Fetch the user's profile
+          await fetchProfile(session.user.id);
+        } else {
+          console.log('No session found');
+        }
+      } catch (err) {
+        console.error('Error initializing auth:', err);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initializeAuth();
+
+    // Set up listener for future auth changes (sign out, token refresh, etc)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, 'Session:', session?.user?.email);
+      console.log('Auth state changed:', event);
       
       if (!mounted) return;
 
       if (event === 'SIGNED_IN' && session?.user) {
-        // Store GitHub token if available
+        console.log('User signed in:', session.user.email);
+        setUserEmail(session.user.email || null);
         if (session.provider_token) {
           localStorage.setItem('github_token', session.provider_token);
         }
-        // Store email from auth session
-        setUserEmail(session.user.email || null);
-        try {
-          await fetchProfile(session.user.id);
-        } catch (err) {
-          console.error('Failed to fetch profile:', err);
-        }
-        setIsLoading(false);
-        isInitialized = true;
       } else if (event === 'SIGNED_OUT') {
+        console.log('User signed out');
         setUser(null);
         setUserEmail(null);
         localStorage.removeItem('github_token');
-        setIsLoading(false);
-        isInitialized = true;
-      } else if (event === 'TOKEN_REFRESHED' && session?.user) {
-        // Handle token refresh
-        setUserEmail(session.user.email || null);
-        if (session.provider_token) {
-          localStorage.setItem('github_token', session.provider_token);
-        }
-      } else if (event === 'INITIAL_SESSION') {
-        // This fires on app startup with the restored session
-        if (session?.user) {
-          console.log('Initial session restored for:', session.user.email);
-          setUserEmail(session.user.email || null);
-          if (session.provider_token) {
-            localStorage.setItem('github_token', session.provider_token);
-          }
-          try {
-            await fetchProfile(session.user.id);
-          } catch (err) {
-            console.error('Failed to fetch profile:', err);
-          }
-        } else {
-          console.log('No initial session found');
-        }
-        setIsLoading(false);
-        isInitialized = true;
       }
     });
 
-    // Fallback: if auth state doesn't fire within 2 seconds, force loading to false
-    const timeoutId = setTimeout(() => {
-      if (mounted && !isInitialized) {
-        console.warn('Auth state change timeout - forcing loading to false');
-        setIsLoading(false);
-        isInitialized = true;
-      }
-    }, 2000);
-
     return () => {
       mounted = false;
-      clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
   }, []);
@@ -100,38 +90,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (error) {
-        // Profile not found - create a temporary one from auth data
         if (error.code === 'PGRST116' || error.status === 406) {
-          console.log('Profile not found, creating minimal profile...');
-          // Get the auth user data
-          const { data: { user: authUser } } = await supabase.auth.getUser();
-          if (authUser) {
-            const minimalProfile: Profile = {
-              id: authUser.id,
-              email: authUser.email || null,
-              full_name: authUser.user_metadata?.full_name || null,
-              avatar_url: authUser.user_metadata?.avatar_url || null,
-              github_username: authUser.user_metadata?.user_name || null,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            };
-            console.log('Setting minimal profile for:', minimalProfile.email);
-            setUser(minimalProfile);
-          }
+          console.log('Profile does not exist yet');
           return;
         }
         console.error('Error fetching profile:', error);
         return;
       }
 
-      setUser(data);
+      if (data) {
+        console.log('Profile fetched:', data.email);
+        setUser(data);
+      }
     } catch (err) {
-      console.error('Unexpected error fetching profile:', err);
+      console.error('Error in fetchProfile:', err);
+    }
+  };
+
+  const createProfile = async (userId: string, email: string, fullName?: string, avatarUrl?: string) => {
+    try {
+      console.log('Creating profile for:', email);
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+          id: userId,
+          email,
+          full_name: fullName || null,
+          avatar_url: avatarUrl || null,
+          github_username: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating profile:', error);
+        throw error;
+      }
+
+      setUser(data);
+      console.log('Profile created successfully');
+    } catch (err) {
+      console.error('Error in createProfile:', err);
+      throw err;
     }
   };
 
   const signInWithGitHub = async () => {
     try {
+      console.log('Starting GitHub OAuth sign in...');
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
@@ -151,12 +160,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Error signing out:', error);
-      throw error;
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Error signing out:', error);
+        throw error;
+      }
+      setUser(null);
+      setUserEmail(null);
+    } catch (err) {
+      console.error('Sign out error:', err);
+      throw err;
     }
-    setUser(null);
   };
 
   const refreshUser = async () => {
@@ -165,8 +180,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Expose createProfile through context
+  const contextValue = {
+    user,
+    userEmail,
+    isLoading,
+    signInWithGitHub,
+    signOut,
+    refreshUser,
+    createProfile,
+  };
+
   return (
-    <AuthContext.Provider value={{ user, userEmail, isLoading, signInWithGitHub, signOut, refreshUser }}>
+    <AuthContext.Provider value={contextValue as any}>
       {children}
     </AuthContext.Provider>
   );
@@ -177,5 +203,5 @@ export const useAuth = () => {
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-  return context;
+  return context as AuthContextType & { createProfile: (userId: string, email: string, fullName?: string, avatarUrl?: string) => Promise<void> };
 };

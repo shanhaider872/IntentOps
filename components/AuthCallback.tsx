@@ -3,56 +3,98 @@ import { supabase } from '../services/supabaseClient';
 
 export const AuthCallback: React.FC = () => {
   const [status, setStatus] = useState<'processing' | 'success' | 'error'>('processing');
+  const [message, setMessage] = useState('Processing login...');
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        console.log('Auth callback: Processing OAuth redirect...');
+        console.log('Auth callback: Starting...');
         
-        // Supabase automatically handles the OAuth code from the URL
-        // Wait for the session to be fully established
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait a moment for Supabase to process the OAuth redirect
+        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Get the session - it should be available now
-        const { data: { session }, error } = await supabase.auth.getSession();
+        // Get the current session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
-        if (error) {
-          console.error('Session error:', error);
+        if (sessionError) {
+          console.error('Session error:', sessionError);
           setStatus('error');
+          setMessage('Failed to get session');
           setTimeout(() => window.location.href = '/', 2000);
           return;
         }
-        
-        if (session?.user) {
-          // Store GitHub token if available
-          if (session.provider_token) {
-            localStorage.setItem('github_token', session.provider_token);
-            console.log('GitHub token stored successfully');
-          }
-          
-          // Also store the access token for general use
-          if (session.access_token) {
-            localStorage.setItem('supabase_access_token', session.access_token);
-          }
-          
-          console.log('Session established for:', session.user.email);
-          setStatus('success');
-          
-          // Give the auth listener time to process and update state
-          // Then redirect to home
-          setTimeout(() => {
-            console.log('Redirecting to home...');
-            window.location.href = '/';
-          }, 1000);
-        } else {
-          console.log('No session found yet, redirecting to home');
-          setTimeout(() => {
-            window.location.href = '/';
-          }, 1000);
+
+        if (!session?.user) {
+          console.error('No session found after OAuth');
+          setStatus('error');
+          setMessage('Failed to establish session');
+          setTimeout(() => window.location.href = '/', 2000);
+          return;
         }
+
+        console.log('Session established for:', session.user.email);
+        const authUser = session.user;
+
+        // Check if profile exists in database
+        const { data: existingProfile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authUser.id)
+          .single();
+
+        if (!profileError && existingProfile) {
+          // Profile exists, just redirect
+          console.log('Profile exists, redirecting...');
+          setStatus('success');
+          setMessage('Login successful!');
+          setTimeout(() => window.location.href = '/', 500);
+          return;
+        }
+
+        // Profile doesn't exist, create it
+        if (profileError?.code === 'PGRST116' || profileError?.status === 406) {
+          console.log('Profile does not exist, creating...');
+          setMessage('Creating user profile...');
+          
+          const { error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              id: authUser.id,
+              email: authUser.email || null,
+              full_name: authUser.user_metadata?.full_name || null,
+              avatar_url: authUser.user_metadata?.avatar_url || null,
+              github_username: authUser.user_metadata?.user_name || null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
+
+          if (createError) {
+            console.error('Error creating profile:', createError);
+            // Still redirect even if profile creation fails
+            console.log('Redirecting despite profile creation error...');
+          } else {
+            console.log('Profile created successfully');
+          }
+
+          setStatus('success');
+          setMessage('Registration successful! Redirecting...');
+          setTimeout(() => window.location.href = '/', 500);
+          return;
+        }
+
+        // Other error while checking profile
+        if (profileError) {
+          console.error('Error checking profile:', profileError);
+          setStatus('error');
+          setMessage('Error checking user profile');
+          setTimeout(() => window.location.href = '/', 2000);
+          return;
+        }
+
       } catch (error) {
         console.error('Auth callback error:', error);
         setStatus('error');
+        setMessage('An unexpected error occurred');
         setTimeout(() => window.location.href = '/', 2000);
       }
     };
@@ -79,14 +121,14 @@ export const AuthCallback: React.FC = () => {
             borderRadius: '50%',
             animation: 'spin 1s linear infinite'
           }} />
-          <p style={{ color: '#e2e8f0', marginTop: '16px' }}>Processing login...</p>
+          <p style={{ color: '#e2e8f0', marginTop: '16px' }}>{message}</p>
         </>
       )}
       {status === 'success' && (
-        <p style={{ color: '#10b981' }}>✓ Login successful! Redirecting...</p>
+        <p style={{ color: '#10b981' }}>✓ {message}</p>
       )}
       {status === 'error' && (
-        <p style={{ color: '#f43f5e' }}>⚠ Login failed. Redirecting...</p>
+        <p style={{ color: '#f43f5e' }}>⚠ {message}</p>
       )}
       <style>{`
         @keyframes spin {
