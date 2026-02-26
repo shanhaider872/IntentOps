@@ -20,62 +20,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let mounted = true;
-    
-    // Check for existing session
-    const checkSession = async () => {
-      try {
-        console.log('Checking for existing session...');
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (!mounted) return;
-        
-        if (error) {
-          console.error('Error getting session:', error);
-          setIsLoading(false);
-          return;
-        }
-        
-        if (session?.user) {
-          // Store email from auth session
-          setUserEmail(session.user.email || null);
-          // Store tokens
-          if (session.provider_token) {
-            localStorage.setItem('github_token', session.provider_token);
-          }
-          await fetchProfile(session.user.id);
-          console.log('Session restored for:', session.user.email);
-        } else {
-          console.log('No existing session found');
-        }
-      } catch (err) {
-        console.error('Unexpected error during session check:', err);
-      } finally {
-        if (mounted) {
-          // Always set loading to false, even if there's an error
-          setIsLoading(false);
-          console.log('Session check complete, loading set to false');
-        }
-      }
-    };
+    let isInitialized = false;
 
-    // Set a timeout to prevent infinite loading (3 seconds)
-    const timeoutId = setTimeout(() => {
-      if (mounted) {
-        setIsLoading(false);
-        console.warn('Session check timeout - forcing loading to false');
-      }
-    }, 3000);
-
-    checkSession().finally(() => {
-      if (mounted) {
-        clearTimeout(timeoutId);
-      }
-    });
-
-    // Listen for auth changes
+    // Listen for auth changes - this handles both initial session and future changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event);
+      console.log('Auth state changed:', event, 'Session:', session?.user?.email);
       
+      if (!mounted) return;
+
       if (event === 'SIGNED_IN' && session?.user) {
         // Store GitHub token if available
         if (session.provider_token) {
@@ -85,39 +37,87 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserEmail(session.user.email || null);
         await fetchProfile(session.user.id);
         setIsLoading(false);
+        isInitialized = true;
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
         setUserEmail(null);
         localStorage.removeItem('github_token');
         setIsLoading(false);
+        isInitialized = true;
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
         // Handle token refresh
         setUserEmail(session.user.email || null);
         if (session.provider_token) {
           localStorage.setItem('github_token', session.provider_token);
         }
+      } else if (event === 'INITIAL_SESSION') {
+        // This fires on app startup with the restored session
+        if (session?.user) {
+          console.log('Initial session restored for:', session.user.email);
+          setUserEmail(session.user.email || null);
+          if (session.provider_token) {
+            localStorage.setItem('github_token', session.provider_token);
+          }
+          await fetchProfile(session.user.id);
+        } else {
+          console.log('No initial session found');
+        }
+        setIsLoading(false);
+        isInitialized = true;
       }
     });
 
+    // Fallback: if auth state doesn't fire within 2 seconds, force loading to false
+    const timeoutId = setTimeout(() => {
+      if (mounted && !isInitialized) {
+        console.warn('Auth state change timeout - forcing loading to false');
+        setIsLoading(false);
+        isInitialized = true;
+      }
+    }, 2000);
+
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
   }, []);
 
   const fetchProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
 
-    if (error) {
-      console.error('Error fetching profile:', error);
-      return;
+      if (error) {
+        console.error('Error fetching profile:', error);
+        // If profile doesn't exist yet, create a minimal profile from session data
+        if (error.code === 'PGRST116') {
+          console.log('Profile does not exist, waiting for database sync...');
+          // Give database a moment to sync
+          await new Promise(resolve => setTimeout(resolve, 500));
+          const { data: retryData, error: retryError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          
+          if (retryError) {
+            console.error('Profile still not found after retry:', retryError);
+            return;
+          }
+          
+          setUser(retryData);
+        }
+        return;
+      }
+
+      setUser(data);
+    } catch (err) {
+      console.error('Unexpected error fetching profile:', err);
     }
-
-    setUser(data);
   };
 
   const signInWithGitHub = async () => {
