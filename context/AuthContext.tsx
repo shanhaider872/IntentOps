@@ -31,6 +31,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         if (error) {
           console.error('Error getting session:', error);
+          setIsLoading(false);
           return;
         }
         
@@ -57,18 +58,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    // Set a timeout to prevent infinite loading (5 seconds is plenty)
+    // Set a timeout to prevent infinite loading (3 seconds)
     const timeoutId = setTimeout(() => {
       if (mounted) {
         setIsLoading(false);
         console.warn('Session check timeout - forcing loading to false');
       }
-    }, 5000);
+    }, 3000);
 
-    checkSession().then(() => {
-      clearTimeout(timeoutId);
-    }).catch(() => {
-      clearTimeout(timeoutId);
+    checkSession().finally(() => {
+      if (mounted) {
+        clearTimeout(timeoutId);
+      }
     });
 
     // Listen for auth changes

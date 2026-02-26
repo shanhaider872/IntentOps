@@ -7,18 +7,20 @@ export const AuthCallback: React.FC = () => {
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        // First, try to get the session
+        // Wait a moment for session to be established
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Get the session - it should be available now
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (error) {
           console.error('Session error:', error);
           setStatus('error');
-          // Redirect after a short delay
           setTimeout(() => window.location.href = '/', 2000);
           return;
         }
         
-        if (session) {
+        if (session?.user) {
           // Store GitHub token if available
           if (session.provider_token) {
             localStorage.setItem('github_token', session.provider_token);
@@ -33,46 +35,14 @@ export const AuthCallback: React.FC = () => {
           console.log('Session established for:', session.user.email);
           setStatus('success');
           
-          // Small delay to show success message
+          // Redirect to home
           setTimeout(() => {
             window.location.href = '/';
           }, 500);
         } else {
-          // No session yet - wait for auth state change
-          console.log('No session found, waiting for auth...');
-          
-          const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_IN' && session) {
-              // Store GitHub token if available
-              if (session.provider_token) {
-                localStorage.setItem('github_token', session.provider_token);
-                console.log('GitHub token stored from auth change');
-              }
-              
-              // Store access token
-              if (session.access_token) {
-                localStorage.setItem('supabase_access_token', session.access_token);
-              }
-              
-              console.log('Auth state changed to signed in');
-              setStatus('success');
-              
-              // Clean up subscription and redirect
-              subscription.unsubscribe();
-              setTimeout(() => {
-                window.location.href = '/';
-              }, 500);
-            }
-          });
-
-          // Timeout in case auth doesn't complete
-          setTimeout(() => {
-            if (status === 'processing') {
-              console.log('Auth timeout, redirecting to home');
-              subscription.unsubscribe();
-              window.location.href = '/';
-            }
-          }, 10000);
+          console.log('No session found yet');
+          setStatus('error');
+          setTimeout(() => window.location.href = '/', 2000);
         }
       } catch (error) {
         console.error('Auth callback error:', error);
