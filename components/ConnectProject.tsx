@@ -37,22 +37,31 @@ export const ConnectProject: React.FC<ConnectProjectProps> = ({ onProjectConnect
   };
 
   const handleConnect = async (repo: GitHubRepo) => {
-    if (!user) return;
+    if (!user) {
+      console.error('No user found, cannot connect');
+      return;
+    }
     
+    console.log('Starting connect for repo:', repo.full_name);
     setConnecting(repo.full_name);
     setError(null);
 
     try {
+      console.log('Step 1: Ensuring user profile exists...');
       // First, ensure the user profile exists in the database
       // This handles the case where profile creation trigger might have failed
       await ensureUserProfile(user.id, userEmail || 'unknown@unknown.com');
+      console.log('Step 1 complete: Profile ensured');
 
+      console.log('Step 2: Analyzing repository...');
       // Analyze repository
       const [repoAnalysis, fileCount] = await Promise.all([
         analyzeRepository(repo),
         getRepoFileCount(repo.full_name.split('/')[0], repo.name),
       ]);
+      console.log('Step 2 complete: Analysis done', { repoAnalysis, fileCount });
 
+      console.log('Step 3: Creating project in database...');
       // Create project in database
       const project = await createProject({
         user_id: user.id,
@@ -71,7 +80,9 @@ export const ConnectProject: React.FC<ConnectProjectProps> = ({ onProjectConnect
         repo_size_kb: repo.size,
         file_count: fileCount,
       });
+      console.log('Step 3 complete: Project created', project);
 
+      console.log('Calling onProjectConnected and onClose...');
       onProjectConnected(project);
       onClose();
     } catch (err) {
@@ -79,6 +90,7 @@ export const ConnectProject: React.FC<ConnectProjectProps> = ({ onProjectConnect
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect repository';
       setError(errorMessage);
     } finally {
+      console.log('Finally: clearing connecting state');
       setConnecting(null);
     }
   };

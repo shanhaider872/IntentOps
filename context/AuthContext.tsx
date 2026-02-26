@@ -21,16 +21,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     // Check for existing session
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        // Store email from auth session
-        setUserEmail(session.user.email || null);
-        await fetchProfile(session.user.id);
+      try {
+        console.log('Checking for existing session...');
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          return;
+        }
+        
+        if (session?.user) {
+          // Store email from auth session
+          setUserEmail(session.user.email || null);
+          await fetchProfile(session.user.id);
+          console.log('Session restored for:', session.user.email);
+        } else {
+          console.log('No existing session found');
+        }
+      } catch (err) {
+        console.error('Unexpected error during session check:', err);
+      } finally {
+        // Always set loading to false, even if there's an error
+        setIsLoading(false);
+        console.log('Session check complete, loading set to false');
       }
-      setIsLoading(false);
     };
 
-    checkSession();
+    // Set a timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setIsLoading(false);
+      console.warn('Session check timeout - forcing loading to false');
+    }, 10000);
+
+    checkSession().then(() => {
+      clearTimeout(timeoutId);
+    }).catch(() => {
+      clearTimeout(timeoutId);
+    });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
