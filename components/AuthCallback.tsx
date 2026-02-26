@@ -10,6 +10,10 @@ export const AuthCallback: React.FC = () => {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session) {
+          // Store GitHub token if available
+          if (session.provider_token) {
+            localStorage.setItem('github_token', session.provider_token);
+          }
           // Redirect to home after successful login
           window.location.href = '/';
         } else {

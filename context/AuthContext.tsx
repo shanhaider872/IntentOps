@@ -31,9 +31,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
+        // Store GitHub token if available
+        if (session.provider_token) {
+          localStorage.setItem('github_token', session.provider_token);
+        }
         await fetchProfile(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        localStorage.removeItem('github_token');
       }
     });
 

@@ -3,12 +3,14 @@ import { GitHubRepo, GitHubFile, Project, CloudProvider } from '../types';
 const GITHUB_API_BASE = 'https://api.github.com';
 
 /**
- * Get GitHub token from Supabase session
+ * Get GitHub token from localStorage (stored during OAuth login)
  */
 function getGitHubToken(): string | null {
-  // The token is stored in the provider_token field after OAuth
-  const session = localStorage.getItem('sb-provider-token');
-  return session ? JSON.parse(session) : null;
+  const token = localStorage.getItem('github_token');
+  if (!token) {
+    console.warn('GitHub token not found in localStorage');
+  }
+  return token;
 }
 
 /**
