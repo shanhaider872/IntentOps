@@ -268,18 +268,45 @@ const App: React.FC = () => {
       case 'intent': return renderIntentHub();
       case 'recs': return renderRecommendations();
       case 'refactor': return (
-        <div className="bg-slate-800/40 p-12 rounded-2xl border border-slate-700/50 text-center animate-in fade-in duration-500">
-          <div className="text-6xl mb-6">🚀</div>
-          <h2 className="text-3xl font-bold text-white mb-4">Auto-Refactor (Beta)</h2>
-          <p className="text-slate-400 text-lg leading-relaxed mb-8">
-            Connect your GitHub repository to allow IntentOps AI to automatically generate Pull Requests for code and infrastructure optimizations.
-          </p>
-          <button 
-            onClick={() => setShowConnectModal(true)}
-            className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl shadow-xl shadow-indigo-500/20 transition-all"
-          >
-            Connect GitHub Repository
-          </button>
+        <div className="animate-in fade-in duration-500">
+          {selectedProject ? (
+            <div className="bg-slate-800/40 p-12 rounded-2xl border border-slate-700/50 text-center">
+              <div className="text-6xl mb-6">🚀</div>
+              <h2 className="text-3xl font-bold text-white mb-4">Auto-Refactor (Beta)</h2>
+              <p className="text-slate-400 text-lg leading-relaxed mb-8">
+                Review recommendations and auto-generate pull requests for {selectedProject.full_name}
+              </p>
+              <div className="space-y-4">
+                {recommendations.length > 0 ? (
+                  recommendations.map((rec) => (
+                    <RecommendationCard
+                      key={rec.id}
+                      recommendation={rec}
+                      onApply={handleApplyRec}
+                    />
+                  ))
+                ) : (
+                  <p className="text-slate-400">
+                    {loading ? 'Analyzing repository...' : 'No recommendations available yet. Connect a new project to analyze.'}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-800/40 p-12 rounded-2xl border border-slate-700/50 text-center">
+              <div className="text-6xl mb-6">🚀</div>
+              <h2 className="text-3xl font-bold text-white mb-4">Auto-Refactor (Beta)</h2>
+              <p className="text-slate-400 text-lg leading-relaxed mb-8">
+                Connect your GitHub repository to allow IntentOps AI to automatically generate Pull Requests for code and infrastructure optimizations.
+              </p>
+              <button 
+                onClick={() => setShowConnectModal(true)}
+                className="px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl shadow-xl shadow-indigo-500/20 transition-all"
+              >
+                Connect GitHub Repository
+              </button>
+            </div>
+          )}
         </div>
       );
       case 'sim': return (
