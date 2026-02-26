@@ -99,7 +99,7 @@ export interface Analysis {
 // User Profile
 export interface Profile {
   id: string;
-  email: string;
+  email: string | null;
   full_name: string | null;
   avatar_url: string | null;
   github_username: string | null;

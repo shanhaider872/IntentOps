@@ -29,6 +29,24 @@ export async function fetchUserRepos(): Promise<GitHubRepo[]> {
     },
   });
 
+  if (response.status === 401) {
+    throw new Error('GitHub authentication failed. Please sign in again.');
+  }
+
+  if (response.status === 403) {
+    const rateLimitRemaining = response.headers.get('X-RateLimit-Remaining');
+    if (rateLimitRemaining === '0') {
+      const resetTime = response.headers.get('X-RateLimit-Reset');
+      const resetDate = resetTime ? new Date(parseInt(resetTime) * 1000) : null;
+      throw new Error(`GitHub API rate limit exceeded. Try again ${resetDate ? resetDate.toLocaleTimeString() : 'later'}.`);
+    }
+    throw new Error('GitHub API access forbidden. You may need to request more permissions.');
+  }
+
+  if (response.status === 404) {
+    throw new Error('GitHub user not found. Please check your GitHub account.');
+  }
+
   if (!response.ok) {
     throw new Error(`Failed to fetch repos: ${response.statusText}`);
   }
@@ -54,6 +72,12 @@ export async function fetchRepoContents(owner: string, repo: string, path: strin
       },
     }
   );
+
+  if (response.status === 404) {
+    // File or directory doesn't exist - return empty array
+    console.log(`Path "${path}" not found in ${owner}/${repo}, returning empty array`);
+    return [];
+  }
 
   if (!response.ok) {
     throw new Error(`Failed to fetch contents: ${response.statusText}`);
@@ -82,7 +106,15 @@ export async function fetchFileContent(owner: string, repo: string, path: string
     }
   );
 
+  if (response.status === 404) {
+    // File doesn't exist - return null gracefully
+    console.log(`File "${path}" not found in ${owner}/${repo}`);
+    return null;
+  }
+
   if (!response.ok) {
+    // For other errors, log but don't throw - return null instead
+    console.error(`Failed to fetch file "${path}": ${response.statusText}`);
     return null;
   }
 
@@ -199,23 +231,35 @@ export async function checkInfrastructureFiles(owner: string, repo: string): Pro
   let hasCloudFormation = fileNames.some(f => f.includes('cloudformation') || f.includes('sam-template'));
   let hasK8s = fileNames.some(f => f.includes('k8s') || f.includes('kubernetes') || f.endsWith('.yaml') || f.endsWith('.yml'));
 
-  // Check for terraform directory
+  // Check for terraform directory (if not already found)
   if (!hasTerraform) {
     try {
       const terraformFiles = await fetchRepoContents(owner, repo, 'terraform');
       hasTerraform = terraformFiles.length > 0;
     } catch (e) {
-      // Directory doesn't exist
+      // Directory doesn't exist or access denied - that's fine
+      console.log(`No terraform directory found in ${owner}/${repo}`);
     }
   }
 
-  // Check for k8s directory
+  // Check for k8s directory (if not already found)
   if (!hasK8s) {
     try {
       const k8sFiles = await fetchRepoContents(owner, repo, 'k8s');
       hasK8s = k8sFiles.length > 0;
     } catch (e) {
-      // Directory doesn't exist
+      // Directory doesn't exist or access denied - that's fine
+      console.log(`No k8s directory found in ${owner}/${repo}`);
+    }
+  }
+
+  // Also check for 'kubernetes' directory
+  if (!hasK8s) {
+    try {
+      const k8sFiles = await fetchRepoContents(owner, repo, 'kubernetes');
+      hasK8s = k8sFiles.length > 0;
+    } catch (e) {
+      // Directory doesn't exist - that's fine
     }
   }
 
@@ -276,11 +320,21 @@ export async function getRepoFileCount(owner: string, repo: string): Promise<num
       }
     );
 
-    if (!response.ok) return 0;
+    if (response.status === 404) {
+      // Repository or tree not found - return 0
+      console.log(`Repository tree not found for ${owner}/${repo}`);
+      return 0;
+    }
+
+    if (!response.ok) {
+      console.error(`Failed to get file count: ${response.statusText}`);
+      return 0;
+    }
 
     const data = await response.json();
     return data.tree?.length || 0;
   } catch (e) {
+    console.error(`Error getting file count for ${owner}/${repo}:`, e);
     return 0;
   }
 }

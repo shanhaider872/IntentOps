@@ -4,6 +4,7 @@ import { Profile } from '../types';
 
 interface AuthContextType {
   user: Profile | null;
+  userEmail: string | null;
   isLoading: boolean;
   signInWithGitHub: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -14,6 +15,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<Profile | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -21,6 +23,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
+        // Store email from auth session
+        setUserEmail(session.user.email || null);
         await fetchProfile(session.user.id);
       }
       setIsLoading(false);
@@ -35,9 +39,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (session.provider_token) {
           localStorage.setItem('github_token', session.provider_token);
         }
+        // Store email from auth session
+        setUserEmail(session.user.email || null);
         await fetchProfile(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
+        setUserEmail(null);
         localStorage.removeItem('github_token');
       }
     });
@@ -98,7 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signInWithGitHub, signOut, refreshUser }}>
+    <AuthContext.Provider value={{ user, userEmail, isLoading, signInWithGitHub, signOut, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,44 @@
 import { supabase } from './supabaseClient';
 import { Project, Analysis, Recommendation, OptimizationIntent, CloudMetric, CostData } from '../types';
 
+/**
+ * Ensure user profile exists, create if not
+ * This handles the case where the profile creation trigger might have failed
+ */
+export async function ensureUserProfile(userId: string, userEmail: string): Promise<void> {
+  const { data: existingProfile, error: fetchError } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', userId)
+    .single();
+
+  if (existingProfile) {
+    // Profile already exists
+    return;
+  }
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    // PGRST116 = "No rows found" - that's fine, we'll create one
+    console.error('Error checking profile:', fetchError);
+  }
+
+  // Create profile if it doesn't exist
+  const { error: insertError } = await supabase
+    .from('profiles')
+    .insert({
+      id: userId,
+      username: userEmail.split('@')[0], // Use email prefix as default username
+      full_name: null,
+      avatar_url: null,
+    });
+
+  if (insertError) {
+    console.error('Error creating profile:', insertError);
+    // Don't throw - the profile might have been created by another process
+    // The foreign key constraint will still work if profile exists
+  }
+}
+
 export async function createProject(project: Omit<Project, 'id' | 'created_at' | 'updated_at'>): Promise<Project> {
   const { data, error } = await supabase
     .from('projects')
@@ -24,7 +62,24 @@ export async function createProject(project: Omit<Project, 'id' | 'created_at' |
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    console.error('Supabase error creating project:', error);
+    
+    // Provide more helpful error messages based on the error code
+    if (error.code === '23503') {
+      // Foreign key violation - usually means profile doesn't exist
+      throw new Error('User profile not found. Please try signing out and signing in again.');
+    }
+    if (error.code === '23505') {
+      // Unique constraint violation
+      throw new Error('This project has already been connected.');
+    }
+    if (error.message.includes('row-level security')) {
+      throw new Error('Permission denied. Please try signing out and signing in again.');
+    }
+    
+    throw new Error(`Failed to create project: ${error.message}`);
+  }
   
   return data as unknown as Project;
 }

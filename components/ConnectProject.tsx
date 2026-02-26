@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { fetchUserRepos, analyzeRepository, getRepoFileCount } from '../services/githubService';
-import { createProject } from '../services/projectService';
+import { createProject, ensureUserProfile } from '../services/projectService';
 import { GitHubRepo, Project } from '../types';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,7 +10,7 @@ interface ConnectProjectProps {
 }
 
 export const ConnectProject: React.FC<ConnectProjectProps> = ({ onProjectConnected, onClose }) => {
-  const { user } = useAuth();
+  const { user, userEmail } = useAuth();
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -24,10 +24,13 @@ export const ConnectProject: React.FC<ConnectProjectProps> = ({ onProjectConnect
   const loadRepos = async () => {
     try {
       setLoading(true);
+      setError(null);
       const userRepos = await fetchUserRepos();
       setRepos(userRepos);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load repositories');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load repositories';
+      setError(errorMessage);
+      console.error('Error loading repos:', err);
     } finally {
       setLoading(false);
     }
@@ -40,6 +43,10 @@ export const ConnectProject: React.FC<ConnectProjectProps> = ({ onProjectConnect
     setError(null);
 
     try {
+      // First, ensure the user profile exists in the database
+      // This handles the case where profile creation trigger might have failed
+      await ensureUserProfile(user.id, userEmail || 'unknown@unknown.com');
+
       // Analyze repository
       const [repoAnalysis, fileCount] = await Promise.all([
         analyzeRepository(repo),
@@ -68,7 +75,9 @@ export const ConnectProject: React.FC<ConnectProjectProps> = ({ onProjectConnect
       onProjectConnected(project);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect repository');
+      console.error('Error connecting repository:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to connect repository';
+      setError(errorMessage);
     } finally {
       setConnecting(null);
     }
